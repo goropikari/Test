@@ -1,7 +1,0 @@
-# test
-
-hoge
-
-piyo
-
-fuga
