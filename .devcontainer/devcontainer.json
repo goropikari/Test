@@ -3,6 +3,7 @@
 {
 	"name": "Go & PostgreSQL",
 	"dockerComposeFile": ["docker-compose.yml"],
+	// "dockerComposeFile": "docker-compose.yml",
 	"service": "app",
 	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 
@@ -13,10 +14,25 @@
 	// "customizations": {},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	"forwardPorts": [8888]
+	// devcontainer cli だと forwardPorts は使えない ref: https://github.com/devcontainers/cli/issues/22
+	"forwardPorts": [8888],
+
+	// We are using appPort since forwardPorts not yet supported directly
+	// by the CLI. See https://github.com/devcontainers/cli/issues/22
+	// A pre-processor can easily parse devcontainer.json and inject
+	// these values as appropriate. We're omitting that for simplicity.
+	// docker-compose だと appPort が使えない。Dockerfile か image 直指定の devcontainer の場合は使える
+	// "appPort": [
+	// 	// Expose SSH port for tools that need it (e.g. JetBrains)
+	// 	"127.0.0.1:2222:2222",
+	// 	// Port VS Code Server / openvscode-server is on
+	// 	8000,
+	// 	// Port for VNC web server contributed by the desktop-lite feature
+	// 	6080
+	// ],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "go version",
+	"postCreateCommand": "date >> /home/vscode/hoge",
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"

@@ -4,5 +4,6 @@
 CMD=${1:-bash}
 
 docker exec -it -u vscode \
-		-e SSH_AUTH_SOCK=/home/vscode/.ssh-auth-sock \
-		test_devcontainer-app-1 $CMD
+    -e SSH_AUTH_SOCK=/home/vscode/.devcontainer-ssh-auth-sock \
+    -w /home/vscode \
+    test_devcontainer-app-1 $CMD

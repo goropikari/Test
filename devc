@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 if [[ ! -e .devcontainer ]]; then
   echo this repository does not have devcontainer configuration file.
@@ -9,11 +10,8 @@ DEVC_JSON=$(cat .devcontainer/devcontainer.json | strip-json-comments)
 SERVICE_NAME=$(echo $DEVC_JSON | jq -r .service)
 WORKDIR_NAME=$(basename $(pwd))
 
-DEVCONTAINER_SSH_AUTH_SOCK=/tmp/devcontainer-ssh-auth-sock
-ln -f ${SSH_AUTH_SOCK} ${DEVCONTAINER_SSH_AUTH_SOCK}
-
 DEVCONTAINER_FLAGS=""
-if [[ ! -z $(docker ps -f name=${WORKDIR_NAME}_devcontainer-${SERVICE_NAME}-1 -q) ]]; then
+if [[ ! -z $(docker ps -a -f name=${WORKDIR_NAME}_devcontainer-${SERVICE_NAME}-1 -q) ]]; then
   DEVCONTAINER_FLAGS="--expect-existing-container=true "
 fi
 REMOVE_FLAG=""
@@ -21,7 +19,36 @@ if [ "$1" = "true" ]; then
     REMOVE_FLAG="--remove-existing-container"
 fi
 
+OVERRIDE_CONFIGRATION_DIR=/tmp/devcontainer-cli-${WORKDIR_NAME}
+mkdir -p ${OVERRIDE_CONFIGRATION_DIR}
+OVERRIDE_COMPOSE=${OVERRIDE_CONFIGRATION_DIR}/override-compose.yaml
+DEVCONTAINER_SSH_AUTH_SOCK=/tmp/devcontainer-ssh-auth-sock
+ln -f ${SSH_AUTH_SOCK} ${DEVCONTAINER_SSH_AUTH_SOCK}
+
+CONTAINER_SSH_SOCK=/home/vscode/.devcontainer-ssh-auth-sock
+
+cat <<EOF > ${OVERRIDE_COMPOSE}
+services:
+  ${SERVICE_NAME}:
+    volumes:
+      - $(pwd):/workspaces/${WORKDIR_NAME}
+      - $(pwd)/.devcontainer/server:/server
+    environment:
+      - SSH_AUTH_SOCK=${CONTAINER_SSH_SOCK}
+    ports:
+      - 2222:2222
+EOF
+
+echo ${DEVC_JSON} | jq ".dockerComposeFile |= if type==\"array\" then . += [\"${OVERRIDE_COMPOSE}\"] else . = [., \"${OVERRIDE_COMPOSE}\"] end | .features = {\"ghcr.io/devcontainers/features/sshd:1\": { }}" > ${OVERRIDE_CONFIGRATION_DIR}/override-devcontainer.json
+
+DOCKER_NETWORK=hoge-network
+if [[ -z $(docker network list -f name=${DOCKER_NETWORK} -q) ]]; then
+  docker network create ${DOCKER_NETWORK}
+fi
+
 devcontainer up ${DEVCONTAINER_FLAGS} ${REMOVE_FLAG} \
-  --mount "type=bind,source=$(pwd),target=/workspaces/${WORKDIR_NAME}" \
-  --mount "type=bind,source=${DEVCONTAINER_SSH_AUTH_SOCK},target=/home/vscode/.ssh-auth-sock" \
-  --remote-env SSH_AUTH_SOCK=/home/vscode/.ssh-auth-sock
+  --override-config ${OVERRIDE_CONFIGRATION_DIR}/override-devcontainer.json \
+  --mount "type=bind,source=${DEVCONTAINER_SSH_AUTH_SOCK},target=${CONTAINER_SSH_SOCK}" \
+  --remote-env SSH_AUTH_SOCK=${CONTAINER_SSH_SOCK}
+
+devcontainer exec /server/init-ssh.sh

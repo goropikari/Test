@@ -1,2 +1,4 @@
 .devcontainer/devcontainer_mod.json
 .devcontainer/override-compose.yaml
+temp-ssh-key*
+id_rsa*
