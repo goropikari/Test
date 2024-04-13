@@ -49,6 +49,9 @@ fi
 devcontainer up ${DEVCONTAINER_FLAGS} ${REMOVE_FLAG} \
   --override-config ${OVERRIDE_CONFIGRATION_DIR}/override-devcontainer.json \
   --mount "type=bind,source=${DEVCONTAINER_SSH_AUTH_SOCK},target=${CONTAINER_SSH_SOCK}" \
-  --remote-env SSH_AUTH_SOCK=${CONTAINER_SSH_SOCK}
+  --remote-env SSH_AUTH_SOCK=${CONTAINER_SSH_SOCK} \
+  --dotfiles-repository https://github.com/goropikari/dotfiles-test \
+  --dotfiles-target-path "~/dotfiles-test" \
+  --dotfiles-install-command "install.sh"
 
 devcontainer exec /server/init-ssh.sh
