@@ -8,19 +8,50 @@ if [[ ! -e .devcontainer ]]; then
 fi
 
 function up () {
+  local REMOVE_FLAG
   REMOVE_FLAG=""
   if [ "$1" = "true" ]; then
-      REMOVE_FLAG="--remove-existing-container"
+    REMOVE_FLAG="--remove-existing-container"
+    shift
   fi
 
-  # postCreateCommand で ssh が必要なものがあった場合エラーになってしまうので skip
-  TARGET=$(devcontainer read-configuration | tail -n 1 | jq -r .workspace.workspaceFolder)
-  devcontainer up ${REMOVE_FLAG} \
-    --skip-post-create \
-    --mount "type=bind,source=$(pwd),target=${TARGET}"
+  DEVCONTAINER_CONFIGRATION=$(devcontainer read-configuration | tail -n 1)
+  TARGET=$(
+    echo ${DEVCONTAINER_CONFIGRATION} | \
+    jq -r .workspace.workspaceFolder
+  )
+  MOUNT_CURRENT_DIR=$(
+    echo ${DEVCONTAINER_CONFIGRATION} | \
+    jq -r '.workspace.workspaceMount == null'
+  )
+
+  # postCreateCommand で ssh が必要なものがあった場合エラーになってしまうので skip する必要がある
+  local RESULT
+  if [[ ${MOUNT_CURRENT_DIR} = "true" ]]; then
+    RESULT=$(
+      devcontainer up ${REMOVE_FLAG} "$@" \
+	--mount "type=bind,source=$(pwd),target=${TARGET}" | \
+      tee /dev/tty | \
+      tail -n 1
+    )
+  else
+    RESULT=$(
+      devcontainer up ${REMOVE_FLAG} "$@" | \
+      tee /dev/tty | \
+      tail -n 1
+    )
+  fi
+
+  IS_COMPOSE=$(echo $RESULT | jq -r '.composeProjectName != null')
+  TEMP_CONTAINER_CONFIGURAITON_LOG=/tmp/$(basename $(pwd))-$(pwd | sha1sum | awk '{printf $1}').log
+  if [[ "${IS_COMPOSE}" = "true" ]]; then
+    echo ${RESULT} | jq -r '.composeProjectName,.containerId' > ${TEMP_CONTAINER_CONFIGURAITON_LOG}
+  else
+    echo ${RESULT} | jq -r '.containerId' > ${TEMP_CONTAINER_CONFIGURAITON_LOG}
+  fi
 }
 
-function exec () {
+function exec_fn () {
   # default command is bash
   CMD=${1:-bash}
   CONTAINER=$(devcontainer up | tail -n 1 | jq -r .containerId)
@@ -39,16 +70,52 @@ function exec () {
   sudo rm -f ${CONTAINER_SOCK}
 }
 
-function help() {
+function stop () {
+  TEMP_CONTAINER_CONFIGURAITON_LOG=/tmp/$(basename $(pwd))-$(pwd | sha1sum | awk '{printf $1}').log
+  if [[ $(wc -l $TEMP_CONTAINER_CONFIGURAITON_LOG | cut -f1 -d' ') -eq 1 ]]; then
+    local CONTAINER_ID
+    CONTAINER_ID=$(head ${TEMP_CONTAINER_CONFIGURAITON_LOG})
+    docker stop ${CONTAINER_ID}
+  else
+    local CONTAINER_PROJECT_NAME
+    CONTAINER_PROJECT_NAME=$(head -n 1 ${TEMP_CONTAINER_CONFIGURAITON_LOG})
+    docker stop $(docker ps -a -f name=${CONTAINER_PROJECT_NAME} -q)
+  fi
+}
+
+function down () {
+  stop >> /dev/null
+
+  TEMP_CONTAINER_CONFIGURAITON_LOG=/tmp/$(basename $(pwd))-$(pwd | sha1sum | awk '{printf $1}').log
+  if [[ $(wc -l $TEMP_CONTAINER_CONFIGURAITON_LOG | cut -f1 -d' ') -eq 1 ]]; then
+    local CONTAINER_ID
+    CONTAINER_ID=$(head ${TEMP_CONTAINER_CONFIGURAITON_LOG})
+    docker rm ${CONTAINER_ID}
+  else
+    local CONTAINER_PROJECT_NAME
+    CONTAINER_PROJECT_NAME=$(head -n 1 ${TEMP_CONTAINER_CONFIGURAITON_LOG})
+    docker rm $(docker ps -a -f name=${CONTAINER_PROJECT_NAME} -q)
+  fi
+  rm -f ${TEMP_CONTAINER_CONFIGURAITON_LOG}
+}
+
+function help () {
   echo "usage:"
   echo "  devc up [true] # if true, remove existing container"
   echo "  devc exec [cmd]"
+  echo "  devc stop"
+  echo "  devc down"
 }
 
 if [[ "$1" = "up" ]]; then
-  up
+  shift
+  up "$@"
 elif [[ "$1" = "exec" ]]; then
-  exec
+  exec_fn
+elif [[ "$1" = "stop" ]]; then
+  stop
+elif [[ "$1" = "down" ]]; then
+  down
 else
   help
 fi
