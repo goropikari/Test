@@ -1,27 +1,54 @@
 #!/bin/bash
 
+set -e
+
 if [[ ! -e .devcontainer ]]; then
   echo this repository does not have devcontainer configuration file.
   exit 1
 fi
 
-DEVC_JSON=$(cat .devcontainer/devcontainer.json | strip-json-comments)
-SERVICE_NAME=$(echo $DEVC_JSON | jq -r .service)
-WORKDIR_NAME=$(basename $(pwd))
+function up () {
+  REMOVE_FLAG=""
+  if [ "$1" = "true" ]; then
+      REMOVE_FLAG="--remove-existing-container"
+  fi
 
-DEVCONTAINER_SSH_AUTH_SOCK=/tmp/devcontainer-ssh-auth-sock
-ln -f ${SSH_AUTH_SOCK} ${DEVCONTAINER_SSH_AUTH_SOCK}
+  # postCreateCommand で ssh が必要なものがあった場合エラーになってしまうので skip
+  TARGET=$(devcontainer read-configuration | tail -n 1 | jq -r .workspace.workspaceFolder)
+  devcontainer up ${REMOVE_FLAG} \
+    --skip-post-create \
+    --mount "type=bind,source=$(pwd),target=${TARGET}"
+}
 
-DEVCONTAINER_FLAGS=""
-if [[ ! -z $(docker ps -f name=${WORKDIR_NAME}_devcontainer-${SERVICE_NAME}-1 -q) ]]; then
-  DEVCONTAINER_FLAGS="--expect-existing-container=true "
+function exec () {
+  # default command is bash
+  CMD=${1:-bash}
+  CONTAINER=$(devcontainer up | tail -n 1 | jq -r .containerId)
+
+  # ssh auth socket を人力で bind mount する
+  SOCK_FILE=$(devcontainer exec bash -c 'mktemp /tmp/devcontainer-cli-ssh-sock-XXXXXXX')
+  CONTAINER_SOCK=$(docker inspect ${CONTAINER} | jq -r .[].GraphDriver.Data.MergedDir)${SOCK_FILE}
+
+  sudo mount --bind ${SSH_AUTH_SOCK} ${CONTAINER_SOCK}
+
+  docker exec -it -u vscode \
+  	-e SSH_AUTH_SOCK=${SOCK_FILE} \
+  	${CONTAINER} $CMD
+
+  sudo umount ${CONTAINER_SOCK}
+  sudo rm -f ${CONTAINER_SOCK}
+}
+
+function help() {
+  echo "usage:"
+  echo "  devc up [true] # if true, remove existing container"
+  echo "  devc exec [cmd]"
+}
+
+if [[ "$1" = "up" ]]; then
+  up
+elif [[ "$1" = "exec" ]]; then
+  exec
+else
+  help
 fi
-REMOVE_FLAG=""
-if [ "$1" = "true" ]; then
-    REMOVE_FLAG="--remove-existing-container"
-fi
-
-devcontainer up ${DEVCONTAINER_FLAGS} ${REMOVE_FLAG} \
-  --mount "type=bind,source=$(pwd),target=/workspaces/${WORKDIR_NAME}" \
-  --mount "type=bind,source=${DEVCONTAINER_SSH_AUTH_SOCK},target=/home/vscode/.ssh-auth-sock" \
-  --remote-env SSH_AUTH_SOCK=/home/vscode/.ssh-auth-sock
