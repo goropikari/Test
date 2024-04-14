@@ -24,4 +24,5 @@ fi
 devcontainer up ${DEVCONTAINER_FLAGS} ${REMOVE_FLAG} \
   --mount "type=bind,source=$(pwd),target=/workspaces/${WORKDIR_NAME}" \
   --mount "type=bind,source=${DEVCONTAINER_SSH_AUTH_SOCK},target=/home/vscode/.ssh-auth-sock" \
-  --remote-env SSH_AUTH_SOCK=/home/vscode/.ssh-auth-sock
+  --remote-env SSH_AUTH_SOCK=/home/vscode/.ssh-auth-sock \
+  --additional-features '{"ghcr.io/goropikari/devcontainer-feature/neovim:latest": {}}'
